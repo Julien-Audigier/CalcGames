@@ -64,9 +64,9 @@ class Obj:
 
         return result
 
-    def pressed(self, board):
+    def pressed(self, board, objects=None):
         """Return whether another object is currently covering this object."""
-        return load_board(board)[self.y][self.x] != self.symbol
+        return load_board(board, objects)[self.y][self.x] != self.symbol
 
     def moveable(self, board, offset, objects = None,amount_moved = None):
         """Check whether this object and any pushed objects can move."""
@@ -83,10 +83,11 @@ class Obj:
         if objects is None:
             objects = globals().get("objects", ())
         for obj in objects:
-            if obj.pos == newPos:
-                if obj.moveable(board,offset,objects, amount_moved):
-                    return obj
-                else: return False
+            if obj is self or not obj.collidable or obj.pos != newPos:
+                continue
+            if obj.moveable(board, offset, objects, amount_moved):
+                return obj
+            return False
         return True
 
     @property
@@ -107,7 +108,7 @@ class Player(Obj):
         super().__init__(pos, "&")
         self.collidable = True
 
-    def movement(self, board, xKey = ("a","d"), yKey = ("w","s"), maxMove = MAX_MOVE):
+    def movement(self, board, objects=None, xKey = ("a","d"), yKey = ("w","s"), maxMove = MAX_MOVE):
         """Moves the player based on the input keys: _Key = (-1,1)."""
 
         inputKey = ""
@@ -121,14 +122,15 @@ class Player(Obj):
         while inputKey not in keys:
             inputKey = input("Enter key to move: ")
         offset = keys[inputKey]
-        self.move(offset, board,amount_moved=maxMove+1)
+        self.move(offset, board, objects, amount_moved=maxMove+1)
 
 class Pressureplate(Obj):
     """Preset for a non-collidable object intended to act as a trigger."""
 
-    def __init__(self, pos = (1,1), symbol = "*"): #⍟
+    def __init__(self, pos = (1,1),id=0, symbol = "*",): #⍟
         super().__init__(pos, symbol)
         self.collidable = False
+        self.id = id
 
 class Box(Obj):
     """Preset for a movable object that can be pushed by the player."""
@@ -140,20 +142,21 @@ class Box(Obj):
 class Door(Obj):
     """A static obstacle controlled by one or more pressure plates."""
 
-    def __init__(self, pos,triggers:list[Obj], gate = 0, instance = 0, symbols = ["│"," ","—"]):
+    def __init__(self, pos,triggers:list[Obj],id=None,gate = 0, instance = 0, symbols = ["│"," ","—"]):
         """Initialize a door; gate 0 means OR and gate 1 means AND."""
         super().__init__(pos, symbols[instance], [True,False][instance],static=True)
         self.triggers = triggers
+        self.id = id
         self.symbols = symbols
         self.instance = instance
         self.gate = gate
         self.intsStart = instance
 
-    def update(self,board):
+    def update(self, board, objects=None):
         """Update the door state from its pressure plates."""
         # OR opens after the first pressed plate; AND requires every plate.
         for obj in self.triggers:
-            if obj.pressed(board):
+            if obj.pressed(board, objects):
                 self.instance = (self.intsStart + 1) % 2
                 if self.gate == 0: break
             else:
@@ -182,43 +185,67 @@ def load_board(board, objects=None):
         board[obj.y][obj.x] = obj.symbol
     return board
 
-def prt_board(board:list[list], objects:list = []):
+def prt_board(board:list[list], objects=None):
     """Print the current board to the terminal."""
-    for row in load_board(board):
+    for row in load_board(board, objects):
         print(" ".join(row))
 
-def play_level(level:list[list], objects:list[Obj], player:Player = None):
+def play_level(level:list[list], player:Player = None):
     """If plater is None then first object in objects is assumed to be the player."""
+    board,objects = level
+    for door in objects:
+        if isinstance(door, Door):
+            door.triggers = [
+                plate for plate in objects
+                if isinstance(plate, Pressureplate) and plate.id == door.id
+            ]
     numMoves = 0
     running = True
     while running:
-        prt_board(level)
-        objects[0].movement(level)
+        prt_board(board, objects)
+        objects[0].movement(board, objects)
         numMoves += 1
         for obj in objects:
             if isinstance(obj, Door):
-                obj.update(level)
+                obj.update(board, objects)
         for obj in objects:
             if isinstance(obj, Pressureplate):
-                if obj.pressed(level) and obj.symbol == "E":
+                if obj.pressed(board, objects) and obj.symbol == "E":
                     running = False
                     print("You win with " + str(numMoves) + " moves!")
 
+def askList(prompt:str,options:list[str]):
+    while True:
+        print(prompt)
+        for i,option in enumerate(options):
+            print(str(i+1)+". "+option)
+        answer = int(input())
+        if answer > 0 and answer-1 < len(options):
+            return answer
+    
 #Vars
 level1 = [
-    ["#","#","#","#","#","#","#"],
-    ["#"," "," "," ","#"," ","#"],
-    ["#"," "," "," ","#"," ","#"],
-    ["#"," "," ","#","#"," ","#"],
-    [" "," "," ","#","#"," "," "],
-    [" "," "," ","#"," "," "," "],
-    ["#"," ","#","#","#"," ","#"],
-    ["#"," "," "," "," "," ","#"],
-    ["#"," "," "," "," "," ","#"],
-    ["#","#","#","#","#","#","#"]
+    [
+        ["#","#","#","#","#","#","#"],
+        ["#"," "," "," ","#"," ","#"],
+        ["#"," "," "," ","#"," ","#"],
+        ["#"," "," ","#","#"," ","#"],
+        [" "," "," ","#","#"," "," "],
+        [" "," "," ","#"," "," "," "],
+        ["#"," ","#","#","#"," ","#"],
+        ["#"," "," "," "," "," ","#"],
+        ["#"," "," "," "," "," ","#"],
+        ["#","#","#","#","#","#","#"]
+    ],
+    [
+    Player(),
+    Pressureplate((1, 2),1),
+    Pressureplate((4, 5),1),
+    Pressureplate((5, 1),"E", "E"),
+    Box((2, 2)),
+    Box((2, 3)),
+    Door((5, 3), [], 1, gate=1, symbols=["—", " "])
+    ]
 ]
 
-plates = [Pressureplate((1,2)),Pressureplate((4,5))]
-objects = [Player(),Pressureplate((5,1),"E"),Box((2,2)),Box((2,3)),Door((5,3),plates,1,symbols=["—"," "])] + plates
-
-play_level(level1,objects)
+play_level(level1)
