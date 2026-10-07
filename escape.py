@@ -1,4 +1,5 @@
-
+import time
+import math
 WALL = "#"
 NON_EXISTING = "~"
 MAX_MOVE = 2
@@ -192,7 +193,7 @@ def prt_board(board:list[list], objects=None):
 
 def play_level(level:list[list], player:Player = None):
     """If plater is None then first object in objects is assumed to be the player."""
-    board,objects = level
+    board, objects = level[1:3]
     for door in objects:
         if isinstance(door, Door):
             door.triggers = [
@@ -202,17 +203,33 @@ def play_level(level:list[list], player:Player = None):
     numMoves = 0
     running = True
     while running:
+        if numMoves > 1:
+            start_time = time.perf_counter()
+            print("hekafiw")
+        for obj in objects:
+            if isinstance(obj, Door):
+                obj.update(board, objects)
         prt_board(board, objects)
         objects[0].movement(board, objects)
         numMoves += 1
         for obj in objects:
-            if isinstance(obj, Door):
-                obj.update(board, objects)
-        for obj in objects:
             if isinstance(obj, Pressureplate):
                 if obj.pressed(board, objects) and obj.symbol == "E":
+                    sec = str(time.perf_counter() - start_time)[0:4]
+                    sec = int(math.floor(float(sec) * 100))
+                    minutes = math.floor(sec / 60)
+                    sec = (sec%60)
+                    if sec == 0: sec = ""
+                    else: sec = "".join([str(sec), " seconds"])
+                    if minutes == 0: minutes = ""
+                    elif sec == 0: minutes = "".join([str(minutes), " minutes "])
+                    else: minutes = "".join([str(minutes), " min & "])
+
                     running = False
+                    prt_board(board,objects)
                     print("You win with " + str(numMoves) + " moves!")
+                    print("You took " + minutes + sec + " to complete the level.")
+                    time.sleep(2)
 
 def askList(prompt:str,options:list[str]):
     while True:
@@ -223,8 +240,9 @@ def askList(prompt:str,options:list[str]):
         if answer > 0 and answer-1 < len(options):
             return answer
     
-#Vars
-level1 = [
+#Var
+level2 = [
+    "Level 2",
     [
         ["#","#","#","#","#","#","#"],
         ["#"," "," "," ","#"," ","#"],
@@ -248,4 +266,38 @@ level1 = [
     ]
 ]
 
-play_level(level1)
+level1 = [
+    "Level 1",
+    [
+        ["#","#","#","#","#","#","#"],
+        [" "," "," "," "," "," "," "],
+        [" "," "," "," "," "," "," "],
+        [" "," "," "," "," "," "," "],
+        ["#"," "," "," "," "," ","#"],
+        ["#","#","#"," ","#","#","#"],
+        ["#"," "," "," "," "," ","#"],
+        ["#"," "," "," "," "," ","#"],
+        ["#","#","#","#","#","#","#"]
+    ],
+    [
+    Player((3,4)),
+    Pressureplate((3, 1),1),
+    Pressureplate((3, 7),"E", "E"),
+    Box((3, 3)),
+    Door((3, 5), [], 1, gate=1, symbols=["—", " "])
+    ]
+]
+
+levels = [level1, level2]
+running = True
+while running:
+    match askList("Choose:", ["Play","Workshop","Quit"]):
+        case 1:
+            names = []
+            for level in levels:
+                names.append(level[0])
+            play_level(levels[askList("Choose Level:", names)-1])
+        case 2:
+            pass
+        case 3:
+            running = False
